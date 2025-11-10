@@ -1,0 +1,33 @@
+
+tab_numbers: 
+  "Стариков Сергей Владимирович": "02"
+
+weather_journal_path: "data/weather_journal.json"
+
+# Excel settings
+EXCEL_VISIBLE: true
+EXCEL_DISPLAY_ALERTS: false
+
+temperatures:
+  min: 20
+  max: 25
+pressure:
+  min: 98.5
+  max: 102
+humdity:
+  min: 42
+  max: 58
+
+# Счетччики воды
+water_meter_good_msg: На основании результатов поверки СИ соответствует установленным метрологическим и техническим требованиям и пригодно к применению.
+water_meter_bad_msg: На основании результатов поверки СИ не соответствует установленным метрологическим и техническим требованиям и не пригодно к применению.
+water_meter_templates_path: ""
+hot_water_temperatures:
+  min: 40
+  max: 90
+cold_water_temperatures:
+  min: 5
+  max: 15
+flow_ranges:
+  min: 0.5
+  max: 0.95
