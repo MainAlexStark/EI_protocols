@@ -3,13 +3,14 @@ from pathlib import Path
 from openpyxl import load_workbook
 import re
 import random
+import os
 
 from EI_protocols_utils.utils.models import ExcelProtocol, WaterMeterProtocol
 from EI_protocols_utils.utils.settings import settings
 from EI_protocols_utils.utils.constants import *
 from utils.exchanges import RequiredFieldsError, RowError
 from utils.weather import get_weather, add_weather
-
+from utils.user_info import save_paths, load_paths
 
 class Journal:
     required_fields = [0, 2, 5, 7, 9, 10, 12, 13, 21, 32, 35, 41, 44, 45]
@@ -76,7 +77,7 @@ class Journal:
         
     def create_protocols(self, from_row: int, to_row: int, to_folder: Path) -> list[str]:
         errors = []
-        exis
+        completed = []
         for index, row in enumerate(self.wsheet.iter_rows(min_row=from_row, max_row=to_row, values_only=False)):
             try:
                 # Преобразуем к значениям для работы
@@ -123,8 +124,52 @@ class Journal:
                 else:
                     raise Exception("Не удалось определить максимальный расход из протокола"\
                         "Убедитесь, что шаблон протокола содержит результаты расхода измерений в B53-B55, или AC59-AC61")
+                    
+                completed.append((xlsx_path, pdf_path))
             except Exception as e:
                 errors.append(RowError(e, index+from_row))
+
+        print(f"Выполнены успешно ({len(completed)}): ")
+        for item in completed:
+            print(f" - {item[0].name}, {item[1].name}")
+        print(f"\nС ошибками ({len(errors)}): ")
+        for error in errors:
+            print(f" - {error}, строка {error.row_number}")
             
+        if errors:
+            if input("\nСохранить протоколы? (y/n): ").lower() == 'n':
+                for item in completed:
+                    os.remove(item[0])
+                    os.remove(item[1])
+
 journal = Journal(path=Path("data/journal.xlsx").resolve())
-journal.create_protocols(from_row=6855, to_row=6855)
+
+data = load_paths(filename=settings.user_info_path)
+journal_path=data.get('journal_path')
+protocols_path=data.get('protocols_path')
+
+if not journal_path: 
+    journal_path = input(f"Введите путь до журнала:")
+    data['journal_path'] = journal_path
+    
+else:
+    question = input(f"Использовать этот журнал: {journal_path}? Enter если хотите использовать, если нет то введите нужный путь:")
+    if question: 
+        journal_path=question
+        data['journal_path'] = journal_path
+
+if not protocols_path: 
+    protocols_path = input(f"Введите путь до папки к готовым протоколам:")
+    data['protocols_path'] = protocols_path
+else:
+    question = input(f"Использовать этот путь: {protocols_path}? Enter если хотите использовать, если нет то введите нужный путь:")
+    if question: 
+        protocols_path=question
+        data['protocols_path'] = protocols_path
+
+save_paths(paths=data, filename=settings.user_info_path)
+
+from_row = int(input(f"С какой строки начать:"))
+to_row = int(input(f"На какой закончить:"))
+
+journal.create_protocols(from_row=from_row, to_row=to_row, to_folder=Path(protocols_path).resolve())

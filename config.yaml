@@ -2,6 +2,7 @@
 tab_numbers: 
   "Стариков Сергей Владимирович": "02"
 
+user_info_path: "data/user_info.json"
 weather_journal_path: "data/weather_journal.json"
 
 # Excel settings
