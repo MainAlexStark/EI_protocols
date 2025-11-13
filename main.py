@@ -13,7 +13,7 @@ from utils.weather import get_weather, add_weather
 from utils.user_info import save_paths, load_paths
 
 class Journal:
-    required_fields = [0, 2, 5, 7, 9, 10, 12, 13, 21, 32, 35, 41, 44, 45]
+    required_fields = [0, 2, 5, 7, 9, 10, 12, 13, 21, 32, 35, 44, 45]
     
     def __init__(self, path: Path):
         self.path = path
@@ -28,7 +28,7 @@ class Journal:
                 missing_fields.append(index)
         
         cells_names = {}
-        first_row = self.wsheet.rows[0]
+        first_row = self.wsheet[1] # Нумерация в openpyxl с 1
         for index in self.required_fields:
             field_name = first_row[index].value
             cells_names[index] = field_name
@@ -75,9 +75,10 @@ class Journal:
 
         return row
         
-    def create_protocols(self, from_row: int, to_row: int, to_folder: Path) -> list[str]:
+    def create_protocols(self, from_row: int, to_row: int, to_folder: str) -> list[str]:
         errors = []
         completed = []
+        not_completed = []
         for index, row in enumerate(self.wsheet.iter_rows(min_row=from_row, max_row=to_row, values_only=False)):
             try:
                 # Преобразуем к значениям для работы
@@ -89,9 +90,21 @@ class Journal:
                 # Проверяем и дополняем данные
                 self.validate_row(values)
                 
+                
+                
+                temperature_str = re.sub(r"[^0-9.]", "", str(values[14]).replace(',', '.'))
+                pressure_str = re.sub(r"[^0-9.]", "", str(values[15]).replace(',', '.'))
+                humidity_str = re.sub(r"[^0-9.]", "", str(values[16]).replace(',', '.'))
+                readings_str = re.sub(r"[^0-9.]", "", str(values[45]).replace(',', '.'))
+                
+                temperature_float = round(float(temperature_str), 1)
+                pressure_float = round(float(pressure_str), 1)
+                humidity_float = round(float(humidity_str), 1)
+                readings_float = round(float(readings_str), 1)
+                
                 # Создаем протокол
                 protocol = WaterMeterProtocol(
-                    dir_path=to_folder.resolve(),
+                    dir_path=to_folder,
                     tab_number=settings.tab_numbers.get(values[35], values[0].split('-')[2]),
                     protocol_number=values[0].split('-')[-1],
                     date=values[9].strftime("%d.%m.%Y") if type(values[9]) is not str else values[9],
@@ -105,29 +118,39 @@ class Journal:
                     year=int(values[44]),
                     owner=values[47] if values[47] else "Частное лицо",
                     address=values[32],
-                    temperature=round(float(str(values[14]).replace('.', ',')), 1),
-                    pressure=round(float(str(values[15]).replace('.', ',')), 1),
-                    humidity=round(float(str(values[16]).replace('.', ',')), 1),
-                    readings=round(float(str(values[45]).replace('.', ',')), 1),
+                    temperature=temperature_float,
+                    pressure=pressure_float,
+                    humidity=humidity_float,
+                    readings=readings_float,
                     unit_type=values[48]
                 )
                 
                 xlsx_path, pdf_path = protocol.create()
+                completed.append((xlsx_path, pdf_path))
+                print(f"Создан протокол: {xlsx_path}")
                 
-                ready_protocol = load_workbook(filename=xlsx_path)
+                ready_protocol = load_workbook(filename=xlsx_path, data_only=True) # Без data_only=False будут формулы
                 ready_wsheet = ready_protocol[WATER_METER_PROTOTOCOL_SEETNAME]
                 
-                if "Измерения на расходе Qнаиб , л/ч" in ready_wsheet["B55"].value:
-                    values[41]=max(float(ready_wsheet["AC55"].value), float(ready_wsheet["AC54"].value), float(ready_wsheet["AC53"].value))
+                if "Измерения на расходе Qнаиб , л/ч" in str(ready_wsheet["B55"].value):
+                    consumption=max(float(ready_wsheet["AC55"].value), float(ready_wsheet["AC54"].value), float(ready_wsheet["AC53"].value))
                 elif "Измерения на расходе Qнаиб , л/ч" in ready_wsheet["B59"].value:
-                    values[41]=max(float(ready_wsheet["AC61"].value), float(ready_wsheet["AC60"].value), float(ready_wsheet["AC59"].value))
+                    consumption=max(float(ready_wsheet["AC61"].value), float(ready_wsheet["AC60"].value), float(ready_wsheet["AC59"].value))
                 else:
                     raise Exception("Не удалось определить максимальный расход из протокола"\
                         "Убедитесь, что шаблон протокола содержит результаты расхода измерений в B53-B55, или AC59-AC61")
                     
-                completed.append((xlsx_path, pdf_path))
+                values[41] = f"Поверен в диапазоне расхода (0,03-{round(consumption, 3)}) м3/ч"
+                for i, cell in enumerate(row):
+                    cell.value = values[i]
+                    
             except Exception as e:
                 errors.append(RowError(e, index+from_row))
+                not_completed.append(index+from_row)
+                raise e
+            except RequiredFieldsError as rfe:
+                not_completed.append(index+from_row)
+                errors.append(RowError(rfe, index+from_row))
 
         print(f"Выполнены успешно ({len(completed)}): ")
         for item in completed:
@@ -139,8 +162,11 @@ class Journal:
         if errors:
             if input("\nСохранить протоколы? (y/n): ").lower() == 'n':
                 for item in completed:
+                    print(f"Удаляем протоколы: {item[0].name}, {item[1].name}")
                     os.remove(item[0])
                     os.remove(item[1])
+                    
+        self.workbook.save(filename=self.path)
 
 journal = Journal(path=Path("data/journal.xlsx").resolve())
 
@@ -172,4 +198,4 @@ save_paths(paths=data, filename=settings.user_info_path)
 from_row = int(input(f"С какой строки начать:"))
 to_row = int(input(f"На какой закончить:"))
 
-journal.create_protocols(from_row=from_row, to_row=to_row, to_folder=Path(protocols_path).resolve())
+journal.create_protocols(from_row=from_row, to_row=to_row, to_folder=protocols_path)

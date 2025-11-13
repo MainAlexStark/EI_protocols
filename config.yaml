@@ -22,7 +22,7 @@ humdity:
 # Счетччики воды
 water_meter_good_msg: На основании результатов поверки СИ соответствует установленным метрологическим и техническим требованиям и пригодно к применению.
 water_meter_bad_msg: На основании результатов поверки СИ не соответствует установленным метрологическим и техническим требованиям и не пригодно к применению.
-water_meter_templates_path: ""
+water_meter_templates_path: "data/water_meter_templates"
 hot_water_temperatures:
   min: 40
   max: 90
