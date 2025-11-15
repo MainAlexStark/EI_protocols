@@ -100,7 +100,7 @@ class Journal:
                 temperature_float = round(float(temperature_str), 1)
                 pressure_float = round(float(pressure_str), 1)
                 humidity_float = round(float(humidity_str), 1)
-                readings_float = round(float(readings_str), 1)
+                readings_float = round(float(readings_str), 3)
                 
                 # Создаем протокол
                 protocol = WaterMeterProtocol(
@@ -147,7 +147,7 @@ class Journal:
             except Exception as e:
                 errors.append(RowError(e, index+from_row))
                 not_completed.append(index+from_row)
-                raise e
+                #raise e
             except RequiredFieldsError as rfe:
                 not_completed.append(index+from_row)
                 errors.append(RowError(rfe, index+from_row))
