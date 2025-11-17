@@ -1,21 +1,308 @@
 from email import header
+import json
+import os
+from pathlib import Path
+import random
+import re
 import sys
+import time
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtCore import QAbstractTableModel, Qt, QVariant
+from PyQt6.QtCore import QObject, pyqtSignal, QThread
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
-    QVBoxLayout, QLineEdit, QLabel, QFileDialog, QWidget, QCheckBox, QDialog, QHBoxLayout ,QMessageBox
+    QVBoxLayout, QLineEdit, QLabel, QFileDialog, QWidget, QCheckBox, QDialog, QHBoxLayout ,QMessageBox, QPlainTextEdit, QProgressBar
 )
 from PyQt6.QtWidgets import QTableView
+from openpyxl import load_workbook
 import pandas as pd
 
-
+from EI_protocols_utils.utils.constants import *
+from EI_protocols_utils.utils.weather import get_weather, add_weather
+from EI_protocols_utils.utils.exchanges import RequiredFieldsError, RowError
+from EI_protocols_utils.utils.models import Journal, WaterMeterProtocol
 from EI_protocols_utils.utils.settings import settings
 from EI_protocols_utils.utils.user_info import save_paths, load_paths
 data = load_paths(filename=settings.user_info_path)
 
+# Работа со средним выполнением протоколов
+TIME_STATS_FILE = Path(settings.protocol_times_path)
+MAX_HISTORY = 50  # будем хранить 50 последних значений
+
+if TIME_STATS_FILE.exists():
+    with open(TIME_STATS_FILE, "r") as f:
+        times_data=json.load(f)
+        times = times_data['times']
+else:
+    times = []
+
+class ProtocolWorker(QObject):
+    progress = pyqtSignal(int)         # процент
+    message = pyqtSignal(str)          # лог в консоль
+    finished = pyqtSignal(list, list, list)  # completed, errors, notcomplited
+    eta = pyqtSignal(float)             # сигнал оставшегося времени в секундах
+    
+    required_fields = [0, 2, 5, 7, 9, 10, 12, 13, 21, 32, 35, 44, 45]
+
+    def __init__(self, workbook, from_row, to_row, protocols_path, journal_path):
+        super().__init__()
+        self.workbook = workbook
+        self.wsheet = workbook[JOURNAL_WORKSHEET]
+        self.from_row = from_row
+        self.to_row = to_row
+        self.protocols_path = protocols_path
+        self.journal_path = journal_path
+        
+    def validate_row(self, row: list) -> list:
+        # Выводим пропущенные обязательные поля
+        missing_fields = []
+        for index in self.required_fields:
+            if not row[index]:
+                missing_fields.append(index)
+        
+        cells_names = {}
+        first_row = self.wsheet[1] # Нумерация в openpyxl с 1
+        for index in self.required_fields:
+            field_name = first_row[index].value
+            cells_names[index] = field_name
+        
+        if missing_fields:
+            # Получаем названия пропущенных полей
+            missing_field_names = [cells_names[index] for index in missing_fields]
+            # Формируем человекочитаемую строку
+            missing_field_list = ", ".join(missing_field_names)
+            raise RequiredFieldsError(f"Пропущены поля: {missing_field_list}", missing_fields)
+
+        row[1] = '1' if not row[1] else str(row[1])
+        
+        # Если не указана погода, то создаем или берем из журнала погоды
+        if not row[14] or not row[15] or not row[16]:
+            date_str = row[9].strftime("%d.%m.%Y") if type(row[9]) is not str else row[9]
+            weather = get_weather(date_str)
+            if weather and (not row[14] or not row[15] or not row[16]):
+                row[14] = weather["temperature"] + ' °C'
+                row[15] = weather["pressure"] + ' кП'
+                row[16] = weather["humidity"] + ' %'
+                if not get_weather(date_str):
+                    add_weather(date_str, row[14], row[15], row[16])  # Обновляем журнал погоды
+            else:
+                # Если погоды нет, то генерируем случайные значения и сохраняем в журнал погоды
+                temperature = str(round(random.uniform(settings.temperatures["min"], settings.temperatures["max"]), 1))
+                pressure = str(round(random.uniform(settings.pressure["min"], settings.pressure["max"]), 1))
+                humidity = str(round(random.uniform(settings.humdity["min"], settings.humdity["max"]), 1))
+                add_weather(date_str, temperature, pressure, humidity)
+                row[14] = temperature + ' °C'
+                row[15] = pressure + ' кП'
+                row[16] = humidity + ' %'
+
+        row[34] = '1' if not row[34] else str(row[34])
+        
+        if not row[47]: row[47] = "Частное лицо"
+
+        return row
+
+    def run(self):
+        global times
+        errors = []
+        completed = []
+        not_completed = []
+
+        total_count = self.to_row - self.from_row 
+
+        for i, row in enumerate(self.wsheet.iter_rows(min_row=self.from_row, max_row=self.to_row, values_only=False)):
+            try:
+                # Преобразуем к значениям для работы
+                values = [cell.value for cell in row]
+
+                # for index, value in enumerate(values):
+                #     print(f"{index}: {value}")
+
+                # Проверяем и дополняем данные
+                self.validate_row(values)
+                
+                temperature_str = re.sub(r"[^0-9.]", "", str(values[14]).replace(',', '.'))
+                pressure_str = re.sub(r"[^0-9.]", "", str(values[15]).replace(',', '.'))
+                humidity_str = re.sub(r"[^0-9.]", "", str(values[16]).replace(',', '.'))
+                readings_str = re.sub(r"[^0-9.]", "", str(values[45]).replace(',', '.'))
+                
+                temperature_float = round(float(temperature_str), 1)
+                pressure_float = round(float(pressure_str), 1)
+                humidity_float = round(float(humidity_str), 1)
+                readings_float = round(float(readings_str), 3)
+                
+                # Создаем протокол
+                protocol = WaterMeterProtocol(
+                    dir_path=self.protocols_path,
+                    tab_number=settings.tab_numbers.get(values[35], values[0].split('-')[2]),
+                    protocol_number=values[0].split('-')[-1],
+                    date=values[9].strftime("%d.%m.%Y") if type(values[9]) is not str else values[9],
+                    next_date=values[10].strftime("%d.%m.%Y") if type(values[10]) is not str else values[10],
+                    SI_numbers=values[12],
+                    suitability=False if values[13]=="Непригодно" else True,
+                    reasons_for_unsuitability=values[38],
+                    name=values[5],
+                    number=values[7],
+                    register_number=values[2],
+                    year=int(values[44]),
+                    owner=values[47] if values[47] else "Частное лицо",
+                    address=values[32],
+                    temperature=temperature_float,
+                    pressure=pressure_float,
+                    humidity=humidity_float,
+                    readings=readings_float,
+                    unit_type=values[48]
+                )
+                
+                start = time.perf_counter()
+                xlsx_path, pdf_path = protocol.create()
+                end = time.perf_counter()
+
+                elapsed = end - start
+                times.append(elapsed)
+                if len(times) > MAX_HISTORY:
+                    times = times[-MAX_HISTORY:]
+
+                # сохраняем обратно
+                with open(TIME_STATS_FILE, "w") as f:
+                    json.dump({"times": times}, f)
+                    
+                avg_time = sum(times) / len(times)
+                remaining = avg_time * (total_count - i)
+
+                self.eta.emit(remaining)               # отправляем оставшееся время в диалог
+                self.progress.emit(int(i / total_count * 100))
+
+                completed.append((xlsx_path, pdf_path))
+                self.message.emit(f"✅Создан протокол: {xlsx_path}")
+
+                ready_protocol = load_workbook(filename=xlsx_path, data_only=True) # Без data_only=False будут формулы
+                ready_wsheet = ready_protocol[WATER_METER_PROTOTOCOL_SEETNAME]
+                
+                if "Измерения на расходе Qнаиб , л/ч" in str(ready_wsheet["B55"].value):
+                    consumption=max(float(ready_wsheet["AC55"].value), float(ready_wsheet["AC54"].value), float(ready_wsheet["AC53"].value))
+                elif "Измерения на расходе Qнаиб , л/ч" in ready_wsheet["B59"].value:
+                    consumption=max(float(ready_wsheet["AC61"].value), float(ready_wsheet["AC60"].value), float(ready_wsheet["AC59"].value))
+                else:
+                    raise Exception("Не удалось определить максимальный расход из протокола"\
+                        "Убедитесь, что шаблон протокола содержит результаты расхода измерений в B53-B55, или AC59-AC61")
+                    
+                values[41] = f"Поверен в диапазоне расхода (0,03-{round(consumption, 3)}) м3/ч"
+                for i, cell in enumerate(row):
+                    cell.value = values[i]
+                    
+            except Exception as e:
+                errors.append(RowError(e, i+self.from_row))
+                not_completed.append(i+self.from_row)
+                self.message.emit(f"❌Ошибка: {e}, строка {i+self.from_row}\n")
+                #raise e
+            except RequiredFieldsError as rfe:
+                not_completed.append(i+self.from_row)
+                errors.append(RowError(rfe, i+self.from_row))
+                self.message.emit(f"❌Ошибка: {e}, строка {i+self.from_row}\n")
+                
+            self.workbook.save(filename=self.journal_path)
+
+            # обновляем прогресс
+            progress_percent = int(i / total_count * 100)
+            self.progress.emit(progress_percent)
+
+        self.finished.emit(completed, errors, not_completed)
+
+class CreateProtocolDialog(QDialog):
+    def __init__(self, journal_path, protocols_path, from_row, to_row):
+        super().__init__()
+        
+        self.journal_path = journal_path
+        self.protocols_path = protocols_path
+        self.from_row = from_row
+        self.to_row = to_row
+        
+        self.workbook = load_workbook(filename=self.journal_path)
+        self.wsheet = self.workbook[JOURNAL_WORKSHEET]
+        
+        self.setWindowTitle("Создание протоколов")
+        self.setFixedSize(QSize(500, 500))
+        self.main_layout = QVBoxLayout(self)
+        
+        # ---- Консоль ----
+        self.console = QPlainTextEdit()
+        self.console.setPlainText("Начало создания протоколов...\n")
+        self.console.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        self.console.setFixedSize(QSize(480, 400))
+        self.console.setReadOnly(True)
+        self.main_layout.addWidget(self.console)
+        
+        # ---- Прогрессбар ----
+        self.progress = QProgressBar()
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.progress.setFixedSize(QSize(480, 30))
+        self.main_layout.addWidget(self.progress)
+        
+        self.workbook = load_workbook(journal_path)
+        self.worker_thread = QThread()
+        self.worker = ProtocolWorker(self.workbook, from_row, to_row, protocols_path, journal_path)
+        self.worker.moveToThread(self.worker_thread)
+        
+        # label
+        self.eta_label = QLabel("Осталось ~0 сек.")
+        self.main_layout.addWidget(self.eta_label)
+
+
+        # сигналы
+        self.worker_thread.started.connect(self.worker.run)
+        self.worker.progress.connect(self.progress.setValue)
+        self.worker.message.connect(self.console.appendPlainText)
+        self.worker.finished.connect(self.on_finished)
+        self.worker.finished.connect(self.worker_thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.worker_thread.finished.connect(self.worker_thread.deleteLater)
+        self.worker.eta.connect(self.update_eta_label)
+
+        self.worker_thread.start()
+        
+    def update_eta_label(self, remaining_seconds):
+        mins, secs = divmod(int(remaining_seconds), 60)
+        self.eta_label.setText(f"Осталось ~{mins} мин {secs} сек")
+        
+    def on_finished(self, completed, errors, not_completed):
+        self.completed_protocols = completed
+        self.error_protocols = errors
+        self.console.appendPlainText("🧩Создание протоколов завершено!")        
+        self.console.appendPlainText(f"🧩Выполнены успешно ({len(completed)}): \n")
+        for item in completed:
+            self.console.appendPlainText(f" - {item[0].name}, {item[1].name}")
+        self.console.appendPlainText(f"\n⚠️С ошибками ({len(errors)}): ")
+        for error in errors:
+            self.console.appendPlainText(f" - {error}, строка {error.row_number}")
+            
+        if errors:
+            self.question_label = QLabel(f"Возникли ошибки, сохранить протоколы?")
+            self.yes_button = QPushButton("Да")
+            self.yes_button.clicked.connect(self.yes_button_clicked)
+            self.no_button = QPushButton("Нет")
+            self.no_button.clicked.connect(self.no_button_clicked)
+
+            self.main_layout.addWidget(self.question_label)
+            self.main_layout.addWidget(self.yes_button)
+            self.main_layout.addWidget(self.no_button)
+        
+    def yes_button_clicked(self):
+        self.accept()
+    def no_button_clicked(self):
+        for item in self.completed_protocols:
+            self.console.appendPlainText(f"Удаляем протоколы: {item[0].name}, {item[1].name}")
+            os.remove(item[0])
+            os.remove(item[1])
+        for item in self.error_protocols:
+            os.remove(item[0])
+            os.remove(item[1])
+        self.accept()
+                    
+
 class SettingsDialog(QDialog):
+    
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Настройки")
@@ -194,6 +481,7 @@ class MainWindow(QMainWindow):
 
 
     #### Создание протоколов
+        
     def create_protocols(self):
         journal_path = self.journal_path_label.text()
         protocols_path = self.protocols_path_label.text()
@@ -203,6 +491,15 @@ class MainWindow(QMainWindow):
         if not journal_path or not protocols_path or not from_row or not to_row:
             QMessageBox.warning(self, "Осторожно", "Заполните все поля!")
             return
+        
+        dialog = CreateProtocolDialog(
+            journal_path=journal_path,
+            protocols_path=protocols_path,
+            from_row=int(from_row),
+            to_row=int(to_row)
+        )
+        dialog.exec()
+        
         
     #############
 
