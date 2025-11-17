@@ -5,14 +5,14 @@ from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtCore import QAbstractTableModel, Qt, QVariant
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
-    QVBoxLayout, QLineEdit, QLabel, QFileDialog, QWidget, QCheckBox, QDialog, QHBoxLayout
+    QVBoxLayout, QLineEdit, QLabel, QFileDialog, QWidget, QCheckBox, QDialog, QHBoxLayout ,QMessageBox
 )
 from PyQt6.QtWidgets import QTableView
 import pandas as pd
 
 
 from EI_protocols_utils.utils.settings import settings
-from utils.user_info import save_paths, load_paths
+from EI_protocols_utils.utils.user_info import save_paths, load_paths
 data = load_paths(filename=settings.user_info_path)
 
 class SettingsDialog(QDialog):
@@ -24,10 +24,11 @@ class SettingsDialog(QDialog):
         
         self.app_settings = load_paths(filename=settings.app_settings_path)
         for key, value in self.app_settings.items():
-            checkbox = QCheckBox(f"{key}")
-            checkbox.setChecked(value)
-            checkbox.stateChanged.connect(self.update_setting(key))
-            layout.addWidget(checkbox)
+            if isinstance(value, bool):
+                checkbox = QCheckBox(f"{key}")
+                checkbox.setChecked(value)
+                checkbox.stateChanged.connect(self.update_setting(key))
+                layout.addWidget(checkbox)
             
     def update_setting(self, key):
         def handler(state):
@@ -85,6 +86,7 @@ class MainWindow(QMainWindow):
 
         # Секция создания протокола
         create_protocol_layout = QVBoxLayout()
+        create_protocol_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.journal_path_button = QPushButton("Путь к журналу")
         self.journal_path_button.setFixedSize(200, 40)
@@ -112,8 +114,9 @@ class MainWindow(QMainWindow):
         self.to_row_input.setFixedSize(200, 40)
         create_protocol_layout.addWidget(self.to_row_input)
 
-        self.create_protocol_button = QPushButton("Создать протокол")
+        self.create_protocol_button = QPushButton("Создать протоколы")
         self.create_protocol_button.setFixedSize(200, 40)
+        self.create_protocol_button.clicked.connect(self.create_protocols)
         create_protocol_layout.addWidget(self.create_protocol_button)
 
         self.settings_button = QPushButton("Настройки")
@@ -143,6 +146,8 @@ class MainWindow(QMainWindow):
             self.model = PandasModel(df)
             self.table.setModel(self.model)
             self.table.selectionModel().selectionChanged.connect(self.on_selection_changed)
+            
+            self.table.scrollToBottom()
 
             # подгоняем колонки
             self.table.horizontalHeader().setStretchLastSection(True)
@@ -188,6 +193,19 @@ class MainWindow(QMainWindow):
     ################
 
 
+    #### Создание протоколов
+    def create_protocols(self):
+        journal_path = self.journal_path_label.text()
+        protocols_path = self.protocols_path_label.text()
+        from_row = self.from_row_input.text()
+        to_row = self.to_row_input.text()
+        
+        if not journal_path or not protocols_path or not from_row or not to_row:
+            QMessageBox.warning(self, "Осторожно", "Заполните все поля!")
+            return
+        
+    #############
+
     def select_journal_path(self):
         file, _ = QFileDialog.getOpenFileName(self, caption="Выберите файл", filter="Excel файлы (*.xlsx)")
         if file:
@@ -206,8 +224,11 @@ class MainWindow(QMainWindow):
     def open_settings(self):
         self.settings_dialog = SettingsDialog()
         self.settings_dialog.show()
+        
+        
+        
 
-app = QApplication(sys.argv)
+app = QApplication(sys.argv)    
 window = MainWindow()
-window.show()
+window.showMaximized()
 app.exec()

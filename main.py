@@ -8,9 +8,9 @@ import os
 from EI_protocols_utils.utils.models import ExcelProtocol, WaterMeterProtocol
 from EI_protocols_utils.utils.settings import settings
 from EI_protocols_utils.utils.constants import *
-from utils.exchanges import RequiredFieldsError, RowError
-from utils.weather import get_weather, add_weather
-from utils.user_info import save_paths, load_paths
+from EI_protocols_utils.utils.exchanges import RequiredFieldsError, RowError
+from EI_protocols_utils.utils.weather import get_weather, add_weather
+from EI_protocols_utils.utils.user_info import save_paths, load_paths
 
 class Journal:
     required_fields = [0, 2, 5, 7, 9, 10, 12, 13, 21, 32, 35, 44, 45]
