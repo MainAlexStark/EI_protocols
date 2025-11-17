@@ -4,6 +4,7 @@ tab_numbers:
 
 user_info_path: "data/user_info.json"
 weather_journal_path: "data/weather_journal.json"
+app_settings_path: "data/app_settings.json"
 
 # Excel settings
 EXCEL_VISIBLE: true
