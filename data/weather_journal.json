@@ -28,5 +28,55 @@
         "temperature": "24.3",
         "pressure": "101.2",
         "humidity": "51.4"
+    },
+    "06.11.2025": {
+        "temperature": "24.6",
+        "pressure": "102.0",
+        "humidity": "51.2"
+    },
+    "09.11.2025": {
+        "temperature": "20.2",
+        "pressure": "100.1",
+        "humidity": "52.2"
+    },
+    "10.11.2025": {
+        "temperature": "24.5",
+        "pressure": "99.4",
+        "humidity": "55.4"
+    },
+    "11.11.2025": {
+        "temperature": "20.8",
+        "pressure": "100.2",
+        "humidity": "54.3"
+    },
+    "12.11.2025": {
+        "temperature": "21.4",
+        "pressure": "98.9",
+        "humidity": "53.0"
+    },
+    "13.11.2025": {
+        "temperature": "24.5",
+        "pressure": "98.9",
+        "humidity": "51.8"
+    },
+    "19.11.2025": {
+        "temperature": "21.6",
+        "pressure": "101.8",
+        "humidity": "45.9"
+    },
+    "20.11.2025": {
+        "temperature": "22.3",
+        "pressure": "99.2",
+        "humidity": "49.0"
+    },
+    "21.11.2025": {
+        "temperature": "24.3",
+        "pressure": "99.4",
+        "humidity": "49.1"
+    },
+    "26.11.2025": {
+        "temperature": "23.9",
+        "pressure": "99.6",
+        "humidity": "42.2"
     }
 }

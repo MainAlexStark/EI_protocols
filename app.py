@@ -199,7 +199,7 @@ class ProtocolWorker(QObject):
             except RequiredFieldsError as rfe:
                 not_completed.append(i+self.from_row)
                 errors.append(RowError(rfe, i+self.from_row))
-                self.message.emit(f"❌Ошибка: {e}, строка {i+self.from_row}\n")
+                self.message.emit(f"❌Ошибка: {rfe}, строка {i+self.from_row}\n")
                 
             self.workbook.save(filename=self.journal_path)
 
