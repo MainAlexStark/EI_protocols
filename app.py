@@ -131,6 +131,11 @@ class ProtocolWorker(QObject):
                 humidity_float = round(float(humidity_str), 1)
                 readings_float = round(float(readings_str), 3)
                 
+                second_number = None
+                if values[41]:
+                    match = re.search(r'\(([^-]+)-([^)]+)\)', values[41]) 
+                    second_number = float(match.group(2).replace(',', '.'))
+
                 # Создаем протокол
                 protocol = WaterMeterProtocol(
                     dir_path=self.protocols_path,
@@ -151,7 +156,8 @@ class ProtocolWorker(QObject):
                     pressure=pressure_float,
                     humidity=humidity_float,
                     readings=readings_float,
-                    unit_type=values[48]
+                    unit_type=values[48],
+                    range=str(second_number)
                 )
                 
                 start = time.perf_counter()
@@ -179,15 +185,19 @@ class ProtocolWorker(QObject):
                 ready_protocol = load_workbook(filename=xlsx_path, data_only=True) # Без data_only=False будут формулы
                 ready_wsheet = ready_protocol[WATER_METER_PROTOTOCOL_SEETNAME]
                 
-                if "Измерения на расходе Qнаиб , л/ч" in str(ready_wsheet["B55"].value):
-                    consumption=max(float(ready_wsheet["AC55"].value), float(ready_wsheet["AC54"].value), float(ready_wsheet["AC53"].value))
-                elif "Измерения на расходе Qнаиб , л/ч" in ready_wsheet["B59"].value:
-                    consumption=max(float(ready_wsheet["AC61"].value), float(ready_wsheet["AC60"].value), float(ready_wsheet["AC59"].value))
+                if values[41]:
+                    pass
                 else:
-                    raise Exception("Не удалось определить максимальный расход из протокола"\
-                        "Убедитесь, что шаблон протокола содержит результаты расхода измерений в B53-B55, или AC59-AC61")
+                    if "Измерения на расходе Qнаиб , л/ч" in str(ready_wsheet["B55"].value):
+                        consumption=max(float(ready_wsheet["AC55"].value), float(ready_wsheet["AC54"].value), float(ready_wsheet["AC53"].value))
+                    elif "Измерения на расходе Qнаиб , л/ч" in ready_wsheet["B59"].value:
+                        consumption=max(float(ready_wsheet["AC61"].value), float(ready_wsheet["AC60"].value), float(ready_wsheet["AC59"].value))
+                    else:
+                        raise Exception("Не удалось определить максимальный расход из протокола"\
+                            "Убедитесь, что шаблон протокола содержит результаты расхода измерений в B53-B55, или AC59-AC61")
                     
-                values[41] = f"Поверен в диапазоне расхода (0,03-{round(consumption, 3)}) м3/ч"
+                    values[41] = f"Поверен в диапазоне расхода (0,03-{round(consumption, 3)}) м3/ч"
+                    
                 for i, cell in enumerate(row):
                     cell.value = values[i]
                     
@@ -195,7 +205,7 @@ class ProtocolWorker(QObject):
                 errors.append(RowError(e, i+self.from_row))
                 not_completed.append(i+self.from_row)
                 self.message.emit(f"❌Ошибка: {e}, строка {i+self.from_row}\n")
-                #raise e
+                raise e
             except RequiredFieldsError as rfe:
                 not_completed.append(i+self.from_row)
                 errors.append(RowError(rfe, i+self.from_row))
@@ -295,9 +305,9 @@ class CreateProtocolDialog(QDialog):
             self.console.appendPlainText(f"Удаляем протоколы: {item[0].name}, {item[1].name}")
             os.remove(item[0])
             os.remove(item[1])
-        for item in self.error_protocols:
-            os.remove(item[0])
-            os.remove(item[1])
+        # for item in self.error_protocols:
+        #     os.remove(item[0])
+        #     os.remove(item[1])
         self.accept()
                     
 
