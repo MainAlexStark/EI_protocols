@@ -6,6 +6,7 @@ user_info_path: "data/user_info.json"
 weather_journal_path: "data/weather_journal.json"
 app_settings_path: "data/app_settings.json"
 protocol_times_path: "data/protocol_times.json"
+protocols_path: "data/protocols"
 
 # Excel settings
 EXCEL_VISIBLE: true

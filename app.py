@@ -9,11 +9,12 @@ import time
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtCore import QAbstractTableModel, Qt, QVariant
-from PyQt6.QtCore import QObject, pyqtSignal, QThread
+from PyQt6.QtCore import QObject, pyqtSignal, QThread, QTimer
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QPushButton,
     QVBoxLayout, QLineEdit, QLabel, QFileDialog, QWidget, QCheckBox, QDialog, QHBoxLayout ,QMessageBox, QPlainTextEdit, QProgressBar
 )
+from PyQt6.QtGui import QColor
 from PyQt6.QtWidgets import QTableView
 from openpyxl import load_workbook
 import pandas as pd
@@ -43,7 +44,7 @@ class ProtocolWorker(QObject):
     finished = pyqtSignal(list, list, list)  # completed, errors, notcomplited
     eta = pyqtSignal(float)             # сигнал оставшегося времени в секундах
     
-    required_fields = [0, 2, 5, 7, 9, 10, 12, 13, 21, 32, 35, 44, 45]
+    required_fields = [0, 2, 5, 7, 9, 10, 12, 13, 21, 32, 35, 45]
 
     def __init__(self, workbook, from_row, to_row, protocols_path, journal_path):
         super().__init__()
@@ -131,6 +132,19 @@ class ProtocolWorker(QObject):
                 humidity_float = round(float(humidity_str), 1)
                 readings_float = round(float(readings_str), 3)
                 
+                register_year_2d = int(values[2].split('-')[-1])
+
+                if register_year_2d <= 25:
+                    register_year = 2000 + register_year_2d
+                else:
+                    register_year = 1900 + register_year_2d
+
+                if not values[44]:
+                    year = random.randint(register_year, 2025)
+                    values[44] = year
+                else:
+                    year = int(values[44])
+                
                 second_number = None
                 if values[41]:
                     match = re.search(r'\(([^-]+)-([^)]+)\)', values[41]) 
@@ -149,7 +163,7 @@ class ProtocolWorker(QObject):
                     name=values[5],
                     number=values[7],
                     register_number=values[2],
-                    year=int(values[44]),
+                    year=year,
                     owner=values[47] if values[47] else "Частное лицо",
                     address=values[32],
                     temperature=temperature_float,
@@ -341,6 +355,22 @@ class PandasModel(QAbstractTableModel):
     def __init__(self, df):
         super().__init__()
         self._df = df
+        self.folder_path = settings.protocols_path  # берем путь к папке сразу из settings
+        self.files = set(os.listdir(self.folder_path)) if self.folder_path else set()
+        
+        # Таймер для автообновления списка файлов каждые 3 секунды
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_files)
+        self.timer.start(60000)
+        
+    def update_files(self):
+        """Обновляем список файлов и перерисовываем таблицу при изменении."""
+        if not self.folder_path:
+            return
+        new_files = set(os.listdir(self.folder_path))
+        if new_files != self.files:
+            self.files = new_files
+            self.layoutChanged.emit()  # сообщает таблице, что данные изменились (цвета нужно обновить)
 
     def rowCount(self, parent=None):
         return len(self._df.index)
@@ -352,9 +382,17 @@ class PandasModel(QAbstractTableModel):
         if not index.isValid():
             return QVariant()
 
+        value = self._df.iat[index.row(), index.column()]
+
         if role == Qt.ItemDataRole.DisplayRole:
-            value = self._df.iat[index.row(), index.column()]
             return str(value)
+
+        if role == Qt.ItemDataRole.BackgroundRole:
+            if self.folder_path:
+                col7_value = str(self._df.iat[index.row(), 7])
+                print(f"Проверяем наличие файла для значения в колонке 7: {col7_value}")
+                if any(col7_value in fname for fname in self.files):
+                    return QColor("green")
 
         return QVariant()
 
@@ -423,16 +461,15 @@ class MainWindow(QMainWindow):
 
         main_layout.addLayout(create_protocol_layout)
         
-        
         ### Layout с таблицей
         self.table_layout = QVBoxLayout()
         
         self.table = QTableView()
-        if data.get("journal_path", ""): self.load_excel_to_table(data["journal_path"])
+        if data.get("journal_path", ""):
+            self.load_excel_to_table(data["journal_path"])
         self.table_layout.addWidget(self.table)
         
         main_layout.addLayout(self.table_layout)
-
 
     ##################### Методы работы с таблицей
     def load_excel_to_table(self, path):
