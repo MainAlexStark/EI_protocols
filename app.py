@@ -357,11 +357,31 @@ class PandasModel(QAbstractTableModel):
         self._df = df
         self.folder_path = settings.protocols_path  # берем путь к папке сразу из settings
         self.files = set(os.listdir(self.folder_path)) if self.folder_path else set()
+        self.templates_path = settings.water_meter_templates_path
+        self.templates = set(os.listdir(self.templates_path)) if self.templates_path else set()
+        self.row_colors = {}  # кэш цветов
         
         # Таймер для автообновления списка файлов каждые 3 секунды
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_files)
         self.timer.start(60000)
+        self.update_row_colors()
+        
+    def update_row_colors(self):
+        """Вычисляем цвет каждой строки заранее."""
+        self.row_colors.clear()
+        for row in range(len(self._df)):
+            col2_value = str(self._df.iat[row, 2])
+            col5_value = str(self._df.iat[row, 5])
+            col7_value = str(self._df.iat[row, 7])
+            
+            template_exists = any(col2_value in fname and col5_value in fname for fname in self.templates)
+            if not template_exists:
+                self.row_colors[row] = QColor("red")
+            elif any(col7_value in fname for fname in self.files):
+                self.row_colors[row] = QColor("green")
+            else:
+                self.row_colors[row] = None  # без цвета
         
     def update_files(self):
         """Обновляем список файлов и перерисовываем таблицу при изменении."""
@@ -382,17 +402,11 @@ class PandasModel(QAbstractTableModel):
         if not index.isValid():
             return QVariant()
 
-        value = self._df.iat[index.row(), index.column()]
-
         if role == Qt.ItemDataRole.DisplayRole:
-            return str(value)
+            return str(self._df.iat[index.row(), index.column()])
 
         if role == Qt.ItemDataRole.BackgroundRole:
-            if self.folder_path:
-                col7_value = str(self._df.iat[index.row(), 7])
-                print(f"Проверяем наличие файла для значения в колонке 7: {col7_value}")
-                if any(col7_value in fname for fname in self.files):
-                    return QColor("green")
+            return self.row_colors.get(index.row(), QVariant())
 
         return QVariant()
 
