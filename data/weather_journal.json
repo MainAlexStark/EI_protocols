@@ -78,5 +78,10 @@
         "temperature": "23.9",
         "pressure": "99.6",
         "humidity": "42.2"
+    },
+    "25.12.2025": {
+        "temperature": "24.9",
+        "pressure": "101.0",
+        "humidity": "54.7"
     }
 }

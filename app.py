@@ -6,6 +6,7 @@ import random
 import re
 import sys
 import time
+from datetime import datetime
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtCore import QAbstractTableModel, Qt, QVariant
@@ -171,7 +172,7 @@ class ProtocolWorker(QObject):
                     humidity=humidity_float,
                     readings=readings_float,
                     unit_type=values[48],
-                    range=str(second_number)
+                    range=str(second_number) if second_number else None
                 )
                 
                 start = time.perf_counter()
@@ -375,11 +376,33 @@ class PandasModel(QAbstractTableModel):
             col5_value = str(self._df.iat[row, 5])
             col7_value = str(self._df.iat[row, 7])
             
+            try:
+                register_year_2d = int(str(self._df.iat[row, 2]).split('-')[-1])
+                if self._df.iat[row, 44]:
+                    year = int(self._df.iat[row, 44])
+                else: year = 10000
+            
+            
+                current_year = datetime.now().year
+                current_2d = current_year % 100
+
+                if register_year_2d <= current_2d:
+                    register_year = 2000 + int(register_year_2d)
+                else:
+                    register_year = 1900 + int(register_year_2d)
+                
+            except Exception as e: 
+                year = 10000
+                register_year = 0
+            
+            
             template_exists = any(col2_value in fname and col5_value in fname for fname in self.templates)
             if not template_exists:
                 self.row_colors[row] = QColor("red")
             elif any(col7_value in fname for fname in self.files):
                 self.row_colors[row] = QColor("green")
+            elif year < register_year:
+                self.row_colors[row] = QColor("darkcyan")
             else:
                 self.row_colors[row] = None  # без цвета
         
