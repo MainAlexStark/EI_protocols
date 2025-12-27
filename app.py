@@ -220,7 +220,7 @@ class ProtocolWorker(QObject):
                 errors.append(RowError(e, i+self.from_row))
                 not_completed.append(i+self.from_row)
                 self.message.emit(f"❌Ошибка: {e}, строка {i+self.from_row}\n")
-                raise e
+                #raise e
             except RequiredFieldsError as rfe:
                 not_completed.append(i+self.from_row)
                 errors.append(RowError(rfe, i+self.from_row))
@@ -229,7 +229,10 @@ class ProtocolWorker(QObject):
             self.workbook.save(filename=self.journal_path)
 
             # обновляем прогресс
-            progress_percent = int(i / total_count * 100)
+            try:
+                progress_percent = int(i / total_count * 100)
+            except ZeroDivisionError:
+                progress_percent = 100
             self.progress.emit(progress_percent)
 
         self.finished.emit(completed, errors, not_completed)
@@ -397,14 +400,15 @@ class PandasModel(QAbstractTableModel):
             
             
             template_exists = any(col2_value in fname and col5_value in fname for fname in self.templates)
-            if not template_exists:
-                self.row_colors[row] = QColor("red")
-            elif any(col7_value in fname for fname in self.files):
+            if any(col7_value in fname for fname in self.files):
                 self.row_colors[row] = QColor("green")
+            elif not template_exists:
+                self.row_colors[row] = QColor("red")
             elif year < register_year:
                 self.row_colors[row] = QColor("darkcyan")
             else:
                 self.row_colors[row] = None  # без цвета
+
         
     def update_files(self):
         """Обновляем список файлов и перерисовываем таблицу при изменении."""
