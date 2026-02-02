@@ -8,6 +8,7 @@ import sys
 import time
 from datetime import datetime
 
+
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtCore import QAbstractTableModel, Qt, QVariant
 from PyQt6.QtCore import QObject, pyqtSignal, QThread, QTimer
@@ -45,7 +46,7 @@ class ProtocolWorker(QObject):
     finished = pyqtSignal(list, list, list)  # completed, errors, notcomplited
     eta = pyqtSignal(float)             # сигнал оставшегося времени в секундах
     
-    required_fields = [0, 2, 5, 7, 9, 10, 12, 13, 21, 32, 35, 45]
+    required_fields = [0, 2, 5, 7, 9, 12, 13, 21, 32, 35, 45]
 
     def __init__(self, workbook, from_row, to_row, protocols_path, journal_path):
         super().__init__()
@@ -151,13 +152,25 @@ class ProtocolWorker(QObject):
                     match = re.search(r'\(([^-]+)-([^)]+)\)', values[41]) 
                     second_number = float(match.group(2).replace(',', '.'))
 
+                # исходная дата
+                date_str = values[9].strftime("%d.%m.%Y") if type(values[9]) is not str else values[9]
+                # парсим дату
+                dt = datetime.strptime(date_str, "%d.%m.%Y")
+                # папка вида 2026-01
+                month_folder = dt.strftime("%Y-%m")
+                # полный путь
+                month_dir = os.path.join(self.protocols_path, month_folder)
+                # создаём папку если нет
+                os.makedirs(month_dir, exist_ok=True)
+
                 # Создаем протокол
                 protocol = WaterMeterProtocol(
-                    dir_path=self.protocols_path,
+                    dir_path=month_dir,
                     tab_number=settings.tab_numbers.get(values[35], values[0].split('-')[2]),
                     protocol_number=values[0].split('-')[-1],
-                    date=values[9].strftime("%d.%m.%Y") if type(values[9]) is not str else values[9],
-                    next_date=values[10].strftime("%d.%m.%Y") if type(values[10]) is not str else values[10],
+                    date=date_str,
+                    next_date="0000",
+                    #next_date=values[10].strftime("%d.%m.%Y") if type(values[10]) is not str else values[10],
                     SI_numbers=values[12],
                     suitability=False if values[13]=="Непригодно" else True,
                     reasons_for_unsuitability=values[38],
@@ -360,7 +373,11 @@ class PandasModel(QAbstractTableModel):
         super().__init__()
         self._df = df
         self.folder_path = settings.protocols_path  # берем путь к папке сразу из settings
-        self.files = set(os.listdir(self.folder_path)) if self.folder_path else set()
+        self.files = {
+            str(p)
+            for p in Path(self.folder_path).rglob('*')
+            if p.is_file()
+        } if self.folder_path else set()
         self.templates_path = settings.water_meter_templates_path
         self.templates = set(os.listdir(self.templates_path)) if self.templates_path else set()
         self.row_colors = {}  # кэш цветов

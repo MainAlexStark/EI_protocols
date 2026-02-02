@@ -83,5 +83,65 @@
         "temperature": "24.9",
         "pressure": "101.0",
         "humidity": "54.7"
+    },
+    "29.12.2025": {
+        "temperature": "24.6",
+        "pressure": "98.7",
+        "humidity": "55.8"
+    },
+    "30.12.2025": {
+        "temperature": "22.0",
+        "pressure": "99.9",
+        "humidity": "57.8"
+    },
+    "14.01.2026": {
+        "temperature": "22.1",
+        "pressure": "99.7",
+        "humidity": "54.8"
+    },
+    "15.01.2026": {
+        "temperature": "24.6",
+        "pressure": "100.3",
+        "humidity": "52.3"
+    },
+    "22.01.2026": {
+        "temperature": "20.7",
+        "pressure": "99.1",
+        "humidity": "49.4"
+    },
+    "19.01.2026": {
+        "temperature": "24.6",
+        "pressure": "98.7",
+        "humidity": "42.5"
+    },
+    "20.01.2026": {
+        "temperature": "21.8",
+        "pressure": "100.2",
+        "humidity": "43.5"
+    },
+    "21.01.2026": {
+        "temperature": "20.5",
+        "pressure": "101.7",
+        "humidity": "53.7"
+    },
+    "23.01.2026": {
+        "temperature": "20.1",
+        "pressure": "99.3",
+        "humidity": "55.4"
+    },
+    "24.01.2026": {
+        "temperature": "22.7",
+        "pressure": "100.6",
+        "humidity": "53.3"
+    },
+    "25.01.2026": {
+        "temperature": "20.9",
+        "pressure": "99.4",
+        "humidity": "56.0"
+    },
+    "26.01.2026": {
+        "temperature": "22.1",
+        "pressure": "99.0",
+        "humidity": "49.3"
     }
 }
