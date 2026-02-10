@@ -143,5 +143,20 @@
         "temperature": "22.1",
         "pressure": "99.0",
         "humidity": "49.3"
+    },
+    "27.01.2026": {
+        "temperature": "21.6",
+        "pressure": "101.1",
+        "humidity": "44.2"
+    },
+    "28.01.2026": {
+        "temperature": "22.5",
+        "pressure": "100.7",
+        "humidity": "56.1"
+    },
+    "30.01.2026": {
+        "temperature": "20.1",
+        "pressure": "100.7",
+        "humidity": "52.2"
     }
 }
